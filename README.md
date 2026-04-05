@@ -168,7 +168,7 @@ let g:llm_agent_max_tokens=2000
 let g:llm_agent_session_mode=1
 let g:llm_agent_temperature = 0.7
 let g:llm_agent_lang = 'Chinese'
-let g:llm_agent_split_direction = 'vertical'
+let g:llm_agent_split_direction = 'vertical'  " or 'horizontal' or 'popup'
 let g:split_ratio=4
 let g:llm_agent_enable_tools=1
 let g:chat_persona='default'
@@ -183,7 +183,7 @@ let g:llm_agent_log_level=0  " 0=off, 1=basic, 2=verbose
  - **g:llm_agent_session_mode**: Maintain persistent conversation history across sessions. Default: 1 (enabled). When enabled, conversations are saved to `.vim-llm-agent/history.txt`. Set to 0 to disable history persistence.
  - **g:llm_agent_temperature**: Controls response randomness (0.0-1.0). Higher = more creative, lower = more focused. Default: 0.7
  - **g:llm_agent_lang**: Request responses in a specific language (e.g., `'Chinese'`, `'Spanish'`). Default: none (English)
- - **g:llm_agent_split_direction**: Window split direction: `'vertical'` or `'horizontal'`. Default: `'vertical'`
+ - **g:llm_agent_split_direction**: Window display mode: `'vertical'`, `'horizontal'`, or `'popup'`. Default: `'vertical'`. The `'popup'` option uses Vim 8+ floating window for a non-intrusive overlay display.
  - **g:split_ratio**: Split window size ratio. If set to 4, the window will be 1/4 of the screen. Default: 3
  - **g:chat_persona**: Default AI persona to load on startup. Must match a key in `g:gpt_personas` or `g:llm_agent_custom_persona`. Default: `'default'`. See [Custom Personas](#custom-personas) section.
  - **g:llm_agent_enable_tools**: Enable AI tool/function calling capabilities (allows AI to search files, read files, etc.). Default: 1 (enabled). Supported by OpenAI and Anthropic providers.

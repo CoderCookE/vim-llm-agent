@@ -55,34 +55,130 @@ EOF
   endif
 endfunction
 
+" Check if popup window support is available
+function! chatgpt#has_popup_support() abort
+  return has('popupwin') && exists('*popup_create')
+endfunction
+
+" Create popup window for LLM output
+function! chatgpt#create_popup_window(chat_gpt_session_id) abort
+  " Calculate popup dimensions
+  let width = min([float2nr(&columns * 0.8), &columns - 4])
+  let height = min([float2nr(&lines * 0.6), &lines - 4])
+  " Ensure position values are at least 2 to avoid border overlap
+  let row = max([2, float2nr((&lines - height) / 2)])
+  let col = max([2, float2nr((&columns - width) / 2)])
+
+  " Get or create buffer
+  let bufnr = bufnr(a:chat_gpt_session_id)
+  if bufnr == -1
+    let bufnr = bufadd(a:chat_gpt_session_id)
+    call bufload(bufnr)
+    call setbufvar(bufnr, '&buftype', 'nofile')
+    call setbufvar(bufnr, '&bufhidden', 'hide')
+    call setbufvar(bufnr, '&swapfile', 0)
+    call setbufvar(bufnr, '&ft', 'markdown')
+    call setbufvar(bufnr, '&syntax', 'markdown')
+    call setbufvar(bufnr, '&wrap', 1)
+    call setbufvar(bufnr, '&linebreak', 1)
+  endif
+
+  " Create popup window
+  let opts = {
+        \ 'line': row,
+        \ 'col': col,
+        \ 'minwidth': width,
+        \ 'maxwidth': width,
+        \ 'minheight': height,
+        \ 'maxheight': height,
+        \ 'border': [1, 1, 1, 1],
+        \ 'borderchars': ['─', '│', '─', '│', '┌', '┐', '┘', '└'],
+        \ 'title': ' LLM Agent ',
+        \ 'padding': [0, 1, 0, 1],
+        \ 'close': 'button',
+        \ 'resize': 1,
+        \ 'wrap': 1,
+        \ 'mapping': 0,
+        \ }
+
+  let winid = popup_create(bufnr, opts)
+
+  " Store popup window ID for later reference
+  let g:llm_agent_popup_winid = winid
+
+  return winid
+endfunction
+
 " Display ChatGPT responses in a buffer
 function! chatgpt#display_response(response, finish_reason, chat_gpt_session_id)
   let response = a:response
   let finish_reason = a:finish_reason
   let chat_gpt_session_id = a:chat_gpt_session_id
-  if !bufexists(chat_gpt_session_id)
-    let split_dir = exists('g:llm_agent_split_direction') ? g:llm_agent_split_direction : (exists('g:chat_gpt_split_direction') ? g:chat_gpt_split_direction : 'vertical')
-    if split_dir ==# 'vertical'
-      silent execute winwidth(0)/g:split_ratio.'vnew '. chat_gpt_session_id
+  let split_dir = exists('g:llm_agent_split_direction') ? g:llm_agent_split_direction : (exists('g:chat_gpt_split_direction') ? g:chat_gpt_split_direction : 'vertical')
+
+  " Handle popup window mode
+  if split_dir ==# 'popup'
+    if !chatgpt#has_popup_support()
+      echohl WarningMsg
+      echo "Popup windows require Vim 8.2+ with +popupwin feature. Falling back to vertical split."
+      echohl None
+      let split_dir = 'vertical'
     else
-      silent execute winheight(0)/g:split_ratio.'new '. chat_gpt_session_id
+      " Check if popup already exists and is valid
+      let popup_exists = exists('g:llm_agent_popup_winid') && g:llm_agent_popup_winid > 0 && popup_getpos(g:llm_agent_popup_winid) != {}
+
+      if !popup_exists
+        call chatgpt#create_popup_window(chat_gpt_session_id)
+      endif
+
+      " Get buffer number from popup or create new one
+      let bufnr = bufnr(chat_gpt_session_id)
+      if bufnr == -1
+        let bufnr = bufadd(chat_gpt_session_id)
+        call bufload(bufnr)
+        call setbufvar(bufnr, '&buftype', 'nofile')
+        call setbufvar(bufnr, '&bufhidden', 'hide')
+        call setbufvar(bufnr, '&swapfile', 0)
+        call setbufvar(bufnr, '&ft', 'markdown')
+        call setbufvar(bufnr, '&syntax', 'markdown')
+        call setbufvar(bufnr, '&wrap', 1)
+        call setbufvar(bufnr, '&linebreak', 1)
+      endif
+
+      " Update popup content
+      let winid = exists('g:llm_agent_popup_winid') ? g:llm_agent_popup_winid : 0
+      if winid > 0
+        call popup_settext(winid, getbufline(bufnr, 1, '$'))
+        " Scroll to bottom of popup
+        call win_execute(winid, 'normal! G')
+      endif
     endif
-    call setbufvar(chat_gpt_session_id, '&buftype', 'nofile')
-    call setbufvar(chat_gpt_session_id, '&bufhidden', 'hide')
-    call setbufvar(chat_gpt_session_id, '&swapfile', 0)
-    setlocal modifiable
-    setlocal wrap
-    setlocal linebreak
-    call setbufvar(chat_gpt_session_id, '&ft', 'markdown')
-    call setbufvar(chat_gpt_session_id, '&syntax', 'markdown')
   endif
 
-  if bufwinnr(chat_gpt_session_id) == -1
-    let split_dir = exists('g:llm_agent_split_direction') ? g:llm_agent_split_direction : (exists('g:chat_gpt_split_direction') ? g:chat_gpt_split_direction : 'vertical')
-    if split_dir ==# 'vertical'
-      execute winwidth(0)/g:split_ratio.'vsplit ' . chat_gpt_session_id
-    else
-      execute winheight(0)/g:split_ratio.'split ' . chat_gpt_session_id
+  " Handle traditional split modes
+  if split_dir !=# 'popup'
+    if !bufexists(chat_gpt_session_id)
+      if split_dir ==# 'vertical'
+        silent execute winwidth(0)/g:split_ratio.'vnew '. chat_gpt_session_id
+      else
+        silent execute winheight(0)/g:split_ratio.'new '. chat_gpt_session_id
+      endif
+      call setbufvar(chat_gpt_session_id, '&buftype', 'nofile')
+      call setbufvar(chat_gpt_session_id, '&bufhidden', 'hide')
+      call setbufvar(chat_gpt_session_id, '&swapfile', 0)
+      setlocal modifiable
+      setlocal wrap
+      setlocal linebreak
+      call setbufvar(chat_gpt_session_id, '&ft', 'markdown')
+      call setbufvar(chat_gpt_session_id, '&syntax', 'markdown')
+    endif
+
+    if bufwinnr(chat_gpt_session_id) == -1
+      if split_dir ==# 'vertical'
+        execute winwidth(0)/g:split_ratio.'vsplit ' . chat_gpt_session_id
+      else
+        execute winheight(0)/g:split_ratio.'split ' . chat_gpt_session_id
+      endif
     endif
   endif
 
