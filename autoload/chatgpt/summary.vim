@@ -6,17 +6,8 @@
 function! s:get_summary_cutoff(project_dir) abort
     python3 << EOF
 import vim
-import sys
-import os
-
-plugin_dir = vim.eval('expand("<sfile>:p:h:h:h")')
-python_path = os.path.join(plugin_dir, 'python3')
-if python_path not in sys.path:
-    sys.path.insert(0, python_path)
-
 from chatgpt.summary import get_summary_cutoff
-project_dir = vim.eval('a:project_dir')
-cutoff = get_summary_cutoff(project_dir)
+cutoff = get_summary_cutoff(vim.eval('a:project_dir'))
 vim.command(f'let l:cutoff_result = {cutoff}')
 EOF
     return l:cutoff_result
@@ -108,16 +99,6 @@ function! chatgpt#summary#generate(...) abort
   " This function is complex and calls Python code
   " For now, delegate to the main chat function with appropriate prompt
   python3 << EOF
-import vim
-import sys
-import os
-
-plugin_dir = vim.eval('expand("<sfile>:p:h:h:h")')
-python_path = os.path.join(plugin_dir, 'python3')
-if python_path not in sys.path:
-    sys.path.insert(0, python_path)
-
-# Import the summary generation logic
 from chatgpt.summary import generate_conversation_summary
 generate_conversation_summary()
 EOF
@@ -186,15 +167,6 @@ function! s:check_and_resume_plan() abort
   elseif choice == 3
     " Clear the plan using Python function
     python3 << EOF
-import vim
-import sys
-import os
-
-plugin_dir = vim.eval('expand("<sfile>:p:h:h:h")')
-python_path = os.path.join(plugin_dir, 'python3')
-if python_path not in sys.path:
-    sys.path.insert(0, python_path)
-
 from chatgpt.utils import clear_plan
 clear_plan()
 EOF

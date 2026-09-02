@@ -14,8 +14,9 @@ function! chatgpt#context#check_and_generate() abort
     let project_dir = getcwd()
     let home = expand('~')
 
-    " Skip if we're in home directory, parent of home, or root
-    if project_dir ==# home || project_dir ==# '/' || len(project_dir) <= len(home)
+    " Skip if we're in home directory, a parent of home, or root
+    if project_dir ==# home || project_dir ==# '/' ||
+    \  stridx(project_dir . '/', home . '/') == 0
         return
     endif
 
@@ -39,13 +40,10 @@ function! chatgpt#context#check_and_generate() abort
         echo "No project context found. Generating automatically..."
         let should_generate = 1
     else
-        " Check if file is older than 24 hours
-        let file_time = getftime(context_file)
-        let current_time = localtime()
-        let age_in_hours = (current_time - file_time) / 3600
-
-        if age_in_hours > 24
-            echo "Project context is " . float2nr(age_in_hours) . " hours old. Regenerating..."
+        " Check if new files have been added since last generation
+        let has_new_files = s:check_for_new_files(vim_dir)
+        if has_new_files
+            echo "New files detected in project. Regenerating context..."
             let should_generate = 1
         endif
     endif
@@ -67,19 +65,7 @@ endfunction
 function! chatgpt#context#generate_silent() abort
   " Call Python context generation directly
   python3 << EOF
-import vim
-import sys
-import os
-
-# Add python3/chatgpt to Python path
-plugin_dir = vim.eval('expand("<sfile>:p:h:h")')
-python_path = os.path.join(plugin_dir, 'python3')
-if python_path not in sys.path:
-    sys.path.insert(0, python_path)
-
 from chatgpt.context import generate_project_context
-
-# Generate context (will save to .vim-llm-agent/context.md automatically)
 generate_project_context()
 EOF
 endfunction
@@ -99,24 +85,23 @@ function! chatgpt#context#generate() abort
 
   echo "Generating project context... (this will use AI tools to explore your project)"
 
-  " Call Python context generation directly
   python3 << EOF
-import vim
-import sys
-import os
-
-# Add python3/chatgpt to Python path
-plugin_dir = vim.eval('expand("<sfile>:p:h:h")')
-python_path = os.path.join(plugin_dir, 'python3')
-if python_path not in sys.path:
-    sys.path.insert(0, python_path)
-
 from chatgpt.context import generate_project_context
-
-# Generate context (will save to .vim-llm-agent/context.md automatically)
 generate_project_context()
 EOF
 
   echo "\nProject context generated at " . dir_name . "/context.md"
   echo "You can edit this file to customize the project context."
+endfunction
+
+" Check if new files have been added since last context generation
+function! s:check_for_new_files(vim_dir) abort
+  let result = 0
+  python3 << EOF
+import vim
+from chatgpt.context import has_new_files
+has_new = has_new_files(vim.eval('a:vim_dir'))
+vim.command(f'let result = {1 if has_new else 0}')
+EOF
+  return result
 endfunction

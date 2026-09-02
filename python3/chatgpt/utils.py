@@ -188,14 +188,7 @@ def save_plan(plan_content):
         plan_content: The plan text to save
     """
     try:
-        session_enabled = (
-            int(
-                vim.eval(
-                    'exists("g:chat_gpt_session_mode") ? g:chat_gpt_session_mode : 1'
-                )
-            )
-            == 1
-        )
+        session_enabled = int(get_config("session_mode", "1")) == 1
         if not session_enabled:
             debug_log("INFO: Session mode disabled, not saving plan")
             return
@@ -421,5 +414,66 @@ def parse_conversation_history(history_text):
             'role': current_role,
             'content': '\n'.join(current_content).strip()
         })
-    
+
     return messages
+
+
+def append_tool_results(messages, provider_name, accumulated_content, tool_calls, tool_results):
+    """
+    Append tool-use and tool-result messages in the format required by each provider.
+
+    For Anthropic: adds a single assistant message containing all tool_use blocks,
+    then a single user message containing all tool_result blocks.
+    For OpenAI / others: adds one assistant+tool pair per tool call.
+
+    Args:
+        messages: The messages structure (dict for Anthropic, list for others).
+        provider_name: "anthropic", "openai", etc.
+        accumulated_content: Text the assistant emitted before the tool calls.
+        tool_calls: List of dicts with {id, name, arguments}.
+        tool_results: List of (tool_id, tool_name, tool_args, tool_result) tuples.
+    """
+    import json as _json
+
+    if provider_name == "anthropic" and isinstance(messages, dict) and "messages" in messages:
+        assistant_content = []
+        if accumulated_content.strip():
+            assistant_content.append({"type": "text", "text": accumulated_content})
+        for tc in tool_calls:
+            assistant_content.append({
+                "type": "tool_use",
+                "id": tc["id"],
+                "name": tc["name"],
+                "input": tc["arguments"],
+            })
+        messages["messages"].append({"role": "assistant", "content": assistant_content})
+
+        tool_result_content = []
+        for tool_id, tool_name, _args, tool_result in tool_results:
+            tool_result_content.append({
+                "type": "tool_result",
+                "tool_use_id": tool_id,
+                "content": str(tool_result) if tool_result is not None else "Error: Tool returned None",
+            })
+        if tool_result_content:
+            messages["messages"].append({"role": "user", "content": tool_result_content})
+
+    elif isinstance(messages, list):
+        for tool_id, tool_name, tool_args, tool_result in tool_results:
+            messages.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": tool_id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": _json.dumps(tool_args),
+                    },
+                }],
+            })
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_id,
+                "content": str(tool_result) if tool_result is not None else "Error: Tool returned None",
+            })

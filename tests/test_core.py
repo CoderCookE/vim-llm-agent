@@ -631,8 +631,10 @@ Hi there!"""
 
         chat_gpt("Make a plan")
 
-        # Verify cancellation message was displayed
+        # Verify cancellation message was displayed via vim.vars
+        setitem_calls = mock_vim.vars.__setitem__.call_args_list
         cancel_calls = [
-            c for c in mock_vim.command.call_args_list if "cancelled" in str(c).lower()
+            c for c in setitem_calls
+            if c.args[0] == "_llm_display_content" and "cancelled" in str(c.args[1]).lower()
         ]
         assert len(cancel_calls) > 0
