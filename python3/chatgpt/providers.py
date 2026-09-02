@@ -8,6 +8,7 @@ including OpenAI, Anthropic (Claude), Google (Gemini), Ollama, and OpenRouter.
 import os
 import json
 import requests
+from urllib.parse import urlparse
 
 from chatgpt.utils import debug_log, get_config
 
@@ -311,15 +312,19 @@ class AnthropicProvider(BaseProvider):
         else:
             debug_log(f"WARNING: No tools being sent to Anthropic API")
 
-        # Construct URL - ensure we have /v1/messages endpoint
+        # Construct URL - ensure we reach the /v1/messages endpoint
         base_url = self.config.get("base_url")
         if not base_url:
             raise ValueError("base_url is required for Anthropic provider")
         base_url = base_url.rstrip("/")
-        # Add /v1 if not already present
-        if not base_url.endswith("/v1"):
-            base_url = f"{base_url}/v1"
-        url = f"{base_url}/messages"
+        parsed = urlparse(base_url)
+        path = parsed.path.rstrip("/")
+        if path.endswith("/messages"):
+            url = base_url
+        elif path.endswith("/v1"):
+            url = base_url + "/messages"
+        else:
+            url = base_url + "/v1/messages"
 
         debug_log(f"DEBUG: Making request to Anthropic API: {url}")
 

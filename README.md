@@ -192,7 +192,7 @@ let g:llm_agent_log_level=0  " 0=off, 1=basic, 2=verbose
    - **Allow Once**: Approve this single tool execution
    - **Always Allow**: Remember approval for this tool in the current session
    - **Deny**: Block this tool and remember the denial
- - **g:llm_agent_summary_compaction_size**: Trigger summary regeneration after this many bytes of new conversation since last summary. Default: 51200 (50KB). This implements automatic conversation compaction.
+ - **g:llm_agent_summary_compaction_size**: Trigger summary regeneration after this many bytes of new conversation since last summary. Default: 76800 (75KB). This implements automatic conversation compaction.
  - **g:llm_agent_recent_history_size**: Keep this many bytes of recent conversation uncompressed. Older content gets compressed into summary. Default: 20480 (20KB). Controls the sliding window size.
 
 **Advanced Options:**
@@ -513,7 +513,7 @@ The `cutoff_byte` metadata tracks which portion of history has been compressed, 
 **Configure compaction behavior:**
 ```vim
 " Trigger summary update after this many bytes of new conversation
-let g:llm_agent_summary_compaction_size = 51200  " Default: 50KB
+let g:llm_agent_summary_compaction_size = 76800  " Default: 75KB
 
 " Keep this much recent history uncompressed
 let g:llm_agent_recent_history_size = 20480  " Default: 20KB
