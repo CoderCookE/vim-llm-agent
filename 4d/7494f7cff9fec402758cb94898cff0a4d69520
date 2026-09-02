@@ -1,0 +1,51 @@
+README.md
+  s_cc59aa3e0d2640::t_f797aa9868c3a9 195,516
+autoload/chatgpt.vim
+  s_cc59aa3e0d2640::t_cee3699aa0c3cb 4-15,104,113,121
+autoload/chatgpt/config.vim
+  s_cc59aa3e0d2640::t_142b8fa68c4dc1 45-48,187-189
+autoload/chatgpt/context.vim
+  s_cc59aa3e0d2640::t_03ad1412875083 17-19,43-46,96-107
+autoload/chatgpt/summary.vim
+  s_cc59aa3e0d2640::t_a7bc9a34dd86f3 10
+tests/test_tools.py
+  s_cc59aa3e0d2640::t_726af9effc7f98 46
+autoload/chatgpt/persona.vim
+  s_b81e9b2b89aa8d::t_a062cd1ebb3ecc 9,11
+python3/chatgpt/context.py
+  s_b81e9b2b89aa8d::t_b272e53091b65a 11,16-109,221-223,228,263-265
+python3/chatgpt/core.py
+  s_b81e9b2b89aa8d::t_74799f17e5c892 30-40,77,320,376,392,426,461,475,479,520,577,590,597,617,684
+python3/chatgpt/providers.py
+  s_b81e9b2b89aa8d::t_4fa6d4c10867d3 11,315,320-327
+python3/chatgpt/utils.py
+  s_b81e9b2b89aa8d::t_964b244aa09c76 191,417,419-479
+tests/conftest.py
+  s_b81e9b2b89aa8d::t_6afbded9974b40 58,107-110
+tests/test_core.py
+  s_b81e9b2b89aa8d::t_db0a29a0773647 634-635,637-638
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "4d7494f7cff9fec402758cb94898cff0a4d69520",
+  "prompts": {},
+  "sessions": {
+    "s_b81e9b2b89aa8d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c971fe75-b9f0-44e8-baaa-c003f75ec189",
+        "model": "unknown"
+      },
+      "human_author": "codercooke <ejcook111@gmail.com>"
+    },
+    "s_cc59aa3e0d2640": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41bc7e1c-9c7d-4150-b075-aa3269ebe0a3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "codercooke <ejcook111@gmail.com>"
+    }
+  }
+}
