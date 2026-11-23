@@ -6,7 +6,32 @@ import os
 import vim
 
 
-def get_config(name, default=None):
+_warned_deprecated = set()
+
+
+def _warn_deprecated(old_var, new_var, notify=True):
+    """
+    Warn once per session that a config variable is deprecated.
+    Always written to the debug log; shown in Vim's message area when notify=True.
+    """
+    if old_var in _warned_deprecated:
+        return
+    _warned_deprecated.add(old_var)
+    msg = f"{old_var} is deprecated. Please use {new_var} instead."
+    debug_log(f"WARNING: {msg}", force=True)
+    if not notify:
+        return
+    try:
+        vim.command(
+            "echohl WarningMsg | echomsg '{}' | echohl None".format(
+                "vim-llm-agent: " + msg.replace("'", "''")
+            )
+        )
+    except Exception:
+        pass
+
+
+def get_config(name, default=None, legacy=None):
     """
     Get configuration value with automatic fallback from old to new names.
 
@@ -18,6 +43,8 @@ def get_config(name, default=None):
     Args:
         name: Config variable name (without prefix)
         default: Default value if neither variable exists
+        legacy: Optional full variable name (e.g. "g:anthropic_model") checked
+            last. Using it emits a one-time deprecation warning.
 
     Returns:
         Configuration value or default
@@ -43,14 +70,22 @@ def get_config(name, default=None):
     try:
         old_val = vim.eval(f'exists("{old_var}") ? {old_var} : ""')
         if old_val and old_val != "":
-            # Log deprecation warning (only once per variable)
-            debug_log(
-                f"WARNING: {old_var} is deprecated. Please use {new_var} instead.",
-                force=True,
-            )
+            # Log deprecation warning (only once per variable). g:chat_gpt_* names
+            # are supported indefinitely (see MIGRATION.md), so don't echo it.
+            _warn_deprecated(old_var, new_var, notify=False)
             return old_val
     except vim.error:
         pass
+
+    # Fall back to a legacy unprefixed name (e.g. g:anthropic_model)
+    if legacy:
+        try:
+            legacy_val = vim.eval(f'exists("{legacy}") ? {legacy} : ""')
+            if legacy_val and legacy_val != "":
+                _warn_deprecated(legacy, new_var)
+                return legacy_val
+        except vim.error:
+            pass
 
     # Return default
     return default
@@ -418,6 +453,16 @@ def parse_conversation_history(history_text):
     return messages
 
 
+# Providers whose messages use the Anthropic Messages format
+# ({"system": ..., "messages": [...]} with tool_use / tool_result blocks)
+ANTHROPIC_FORMAT_PROVIDERS = ("anthropic", "bedrock")
+
+
+def uses_anthropic_format(provider_name):
+    """Whether the provider uses the Anthropic Messages format"""
+    return provider_name in ANTHROPIC_FORMAT_PROVIDERS
+
+
 def append_tool_results(messages, provider_name, accumulated_content, tool_calls, tool_results):
     """
     Append tool-use and tool-result messages in the format required by each provider.
@@ -435,7 +480,7 @@ def append_tool_results(messages, provider_name, accumulated_content, tool_calls
     """
     import json as _json
 
-    if provider_name == "anthropic" and isinstance(messages, dict) and "messages" in messages:
+    if uses_anthropic_format(provider_name) and isinstance(messages, dict) and "messages" in messages:
         assistant_content = []
         if accumulated_content.strip():
             assistant_content.append({"type": "text", "text": accumulated_content})

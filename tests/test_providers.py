@@ -1,7 +1,7 @@
 """
 Tests for python3/chatgpt/providers.py
 
-Tests all AI provider classes including OpenAI, Anthropic, Google, Ollama, and OpenRouter.
+Tests all AI provider classes including OpenAI, Anthropic, Bedrock, Google, Ollama, and OpenRouter.
 """
 
 import pytest
@@ -18,6 +18,7 @@ from chatgpt.providers import (
     BaseProvider,
     OpenAIProvider,
     AnthropicProvider,
+    BedrockProvider,
     GoogleProvider,
     OllamaProvider,
     OpenRouterProvider,
@@ -219,6 +220,127 @@ class TestAnthropicProvider:
             assert len(chunks) > 0
 
 
+def _bedrock_stream(events):
+    """Build a fake invoke_model_with_response_stream response"""
+    return {"body": [{"chunk": {"bytes": json.dumps(e).encode()}} for e in events]}
+
+
+@pytest.fixture
+def fake_boto3():
+    """Install a fake boto3 module and return the mocked bedrock-runtime client"""
+    client = MagicMock()
+    session = MagicMock()
+    session.region_name = "us-east-1"
+    session.client.return_value = client
+    boto3_mod = MagicMock()
+    boto3_mod.Session.return_value = session
+    with patch.dict(sys.modules, {"boto3": boto3_mod}):
+        yield boto3_mod, session, client
+
+
+BEDROCK_MESSAGES = {
+    "system": "You are a helpful assistant",
+    "messages": [{"role": "user", "content": "Test"}],
+}
+
+
+class TestBedrockProvider:
+    """Tests for BedrockProvider"""
+
+    def test_bedrock_requires_boto3(self, mock_vim):
+        """Missing boto3 gives an actionable error"""
+        with patch.dict(sys.modules, {"boto3": None}):
+            with pytest.raises(ValueError, match="boto3"):
+                BedrockProvider({})
+
+    def test_bedrock_default_model(self, mock_vim, fake_boto3):
+        provider = BedrockProvider({})
+        assert provider.get_model() == BedrockProvider.DEFAULT_MODEL
+        assert BedrockProvider({"model": "custom"}).get_model() == "custom"
+
+    def test_bedrock_streams_text(self, mock_vim, fake_boto3):
+        boto3_mod, session, client = fake_boto3
+        client.invoke_model_with_response_stream.return_value = _bedrock_stream(
+            [
+                {"type": "message_start", "message": {}},
+                {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hel"}},
+                {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "lo"}},
+                {"type": "message_delta", "delta": {"stop_reason": "end_turn"}},
+                {"type": "message_stop"},
+            ]
+        )
+        provider = BedrockProvider({"region": "us-west-2", "profile": "dev"})
+        chunks = list(provider.stream_chat(BEDROCK_MESSAGES, "model-id", 0.5, 1000))
+
+        assert chunks == [("Hel", "", None), ("lo", "", None), ("", "end_turn", None)]
+        boto3_mod.Session.assert_called_once_with(profile_name="dev", region_name="us-west-2")
+        session.client.assert_called_once_with("bedrock-runtime")
+
+        kwargs = client.invoke_model_with_response_stream.call_args.kwargs
+        assert kwargs["modelId"] == "model-id"
+        body = json.loads(kwargs["body"])
+        assert body["anthropic_version"] == "bedrock-2023-05-31"
+        assert body["system"] == "You are a helpful assistant"
+        assert body["max_tokens"] == 1000
+        assert body["temperature"] == 0.5
+        assert "model" not in body and "stream" not in body and "tools" not in body
+
+    def test_bedrock_tool_calls(self, mock_vim, fake_boto3):
+        _, _, client = fake_boto3
+        client.invoke_model_with_response_stream.return_value = _bedrock_stream(
+            [
+                {"type": "content_block_start", "index": 1,
+                 "content_block": {"type": "tool_use", "id": "toolu_1", "name": "read_file"}},
+                {"type": "content_block_delta", "index": 1,
+                 "delta": {"type": "input_json_delta", "partial_json": '{"path": '}},
+                {"type": "content_block_delta", "index": 1,
+                 "delta": {"type": "input_json_delta", "partial_json": '"a.txt"}'}},
+                {"type": "message_delta", "delta": {"stop_reason": "tool_use"}},
+            ]
+        )
+        tools = [{"name": "read_file", "description": "Read", "parameters": {"type": "object"}}]
+        provider = BedrockProvider({})
+        chunks = list(provider.stream_chat(BEDROCK_MESSAGES, "m", 0.7, 100, tools=tools))
+
+        assert chunks == [
+            ("", "tool_use", [{"id": "toolu_1", "name": "read_file", "arguments": {"path": "a.txt"}}])
+        ]
+        body = json.loads(client.invoke_model_with_response_stream.call_args.kwargs["body"])
+        assert body["tools"] == [
+            {"name": "read_file", "description": "Read", "input_schema": {"type": "object"}}
+        ]
+
+    def test_bedrock_stream_exception_event(self, mock_vim, fake_boto3):
+        _, _, client = fake_boto3
+        client.invoke_model_with_response_stream.return_value = {
+            "body": [{"throttlingException": {"message": "Too many requests"}}]
+        }
+        provider = BedrockProvider({})
+        with pytest.raises(Exception, match="throttlingException.*Too many requests"):
+            list(provider.stream_chat(BEDROCK_MESSAGES, "m", 0.7, 100))
+
+    def test_bedrock_api_error(self, mock_vim, fake_boto3):
+        _, _, client = fake_boto3
+        client.invoke_model_with_response_stream.side_effect = RuntimeError("AccessDenied")
+        provider = BedrockProvider({})
+        with pytest.raises(Exception, match="Bedrock API error.*AccessDenied"):
+            list(provider.stream_chat(BEDROCK_MESSAGES, "m", 0.7, 100))
+
+    def test_bedrock_missing_region(self, mock_vim, fake_boto3):
+        _, session, _ = fake_boto3
+        session.region_name = None
+        provider = BedrockProvider({})
+        with pytest.raises(ValueError, match="AWS region"):
+            list(provider.stream_chat(BEDROCK_MESSAGES, "m", 0.7, 100))
+
+    def test_bedrock_endpoint_url(self, mock_vim, fake_boto3):
+        _, session, client = fake_boto3
+        client.invoke_model_with_response_stream.return_value = _bedrock_stream([])
+        provider = BedrockProvider({"endpoint_url": "https://vpce.example"})
+        list(provider.stream_chat(BEDROCK_MESSAGES, "m", 0.7, 100))
+        session.client.assert_called_once_with("bedrock-runtime", endpoint_url="https://vpce.example")
+
+
 class TestGoogleProvider:
     """Tests for GoogleProvider (Gemini)"""
 
@@ -342,6 +464,60 @@ class TestCreateProvider:
         """Test creating Anthropic provider"""
         provider = create_provider("anthropic")
         assert isinstance(provider, AnthropicProvider)
+
+    def test_create_provider_bedrock(self, mock_vim, fake_boto3):
+        """Test creating Bedrock provider picks up AWS env vars"""
+        with patch.dict("os.environ", {"AWS_REGION": "eu-west-1", "AWS_PROFILE": "prod"}):
+            provider = create_provider("bedrock")
+        assert isinstance(provider, BedrockProvider)
+        assert provider.config["region"] == "eu-west-1"
+        assert provider.config["profile"] == "prod"
+
+    def test_create_provider_reads_llm_agent_names(self, mock_vim):
+        """Provider settings are read from g:llm_agent_<provider>_<setting>"""
+        values = {
+            "g:llm_agent_anthropic_api_key": "new-key",
+            "g:llm_agent_anthropic_model": "claude-new",
+            "g:llm_agent_anthropic_base_url": "https://proxy.example/v1",
+        }
+        mock_vim.eval = lambda expr: next(
+            (v for k, v in values.items() if f'exists("{k}")' in expr), ""
+        )
+        with patch.dict("os.environ", {}, clear=True):
+            provider = create_provider("anthropic")
+        assert provider.config["api_key"] == "new-key"
+        assert provider.get_model() == "claude-new"
+        assert provider.config["base_url"] == "https://proxy.example/v1"
+
+    def test_create_provider_legacy_names_still_work(self, mock_vim):
+        """Deprecated unprefixed names (g:gemini_model, ...) are still honored"""
+        values = {"g:gemini_api_key": "old-key", "g:gemini_model": "gemini-old"}
+        mock_vim.eval = lambda expr: next(
+            (v for k, v in values.items() if f'exists("{k}")' in expr), ""
+        )
+        with patch.dict("os.environ", {}, clear=True):
+            provider = create_provider("gemini")
+        assert provider.config["api_key"] == "old-key"
+        assert provider.get_model() == "gemini-old"
+
+    @pytest.mark.parametrize(
+        "name,env,expected_model",
+        [
+            ("gemini", {"GEMINI_API_KEY": "k"}, "gemini-2.5-flash"),
+            ("ollama", {}, "llama3.2"),
+            ("openrouter", {"OPENROUTER_API_KEY": "k"}, "anthropic/claude-3.5-sonnet"),
+            ("anthropic", {"ANTHROPIC_API_KEY": "k"}, "claude-sonnet-4-5-20250929"),
+            ("openai", {"OPENAI_API_KEY": "k"}, "gpt-4o"),
+        ],
+    )
+    def test_create_provider_defaults_when_unset(self, mock_vim, name, env, expected_model):
+        """With no Vim config, providers fall back to their default model"""
+        mock_vim.eval = lambda expr: ""
+        with patch.dict("os.environ", env, clear=True):
+            provider = create_provider(name)
+        assert provider.get_model() == expected_model
+        if name == "ollama":
+            assert provider.config["base_url"] == "http://localhost:11434"
 
     def test_create_provider_google(self, mock_vim):
         """Test creating Google provider"""

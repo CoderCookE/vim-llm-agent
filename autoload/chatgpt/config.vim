@@ -96,49 +96,11 @@ function! chatgpt#config#setup() abort
     let g:llm_agent_provider = g:chat_gpt_provider
   endif
 
-  " Anthropic (Claude) configuration
-  if !exists("g:anthropic_api_key")
-    let g:anthropic_api_key = ''
-  endif
-
-  if !exists("g:anthropic_model")
-    let g:anthropic_model = 'claude-sonnet-4-5-20250929'
-  endif
-
-  if !exists("g:anthropic_base_url")
-    let g:anthropic_base_url = 'https://api.anthropic.com/v1'
-  endif
-
-  " Gemini (Google) configuration
-  if !exists("g:gemini_api_key")
-    let g:gemini_api_key = ''
-  endif
-
-  if !exists("g:gemini_model")
-    let g:gemini_model = 'gemini-2.5-flash'
-  endif
-
-  " Ollama configuration
-  if !exists("g:ollama_base_url")
-    let g:ollama_base_url = 'http://localhost:11434'
-  endif
-
-  if !exists("g:ollama_model")
-    let g:ollama_model = 'llama3.2'
-  endif
-
-  " OpenRouter configuration
-  if !exists("g:openrouter_api_key")
-    let g:openrouter_api_key = ''
-  endif
-
-  if !exists("g:openrouter_model")
-    let g:openrouter_model = 'anthropic/claude-3.5-sonnet'
-  endif
-
-  if !exists("g:openrouter_base_url")
-    let g:openrouter_base_url = 'https://openrouter.ai/api/v1'
-  endif
+  " Provider-specific settings (g:llm_agent_anthropic_model, g:llm_agent_gemini_api_key,
+  " g:llm_agent_bedrock_region, ...) are optional; their defaults live in
+  " python3/chatgpt/providers.py. The old unprefixed names (g:anthropic_model, etc.)
+  " are deprecated but still read as a fallback. Don't define defaults for either
+  " here, or the fallback would never see a user's legacy setting.
 
   " Debug logging level (0=off, 1=basic, 2=verbose)
   if !exists("g:llm_agent_log_level") && !exists("g:chat_gpt_log_level")

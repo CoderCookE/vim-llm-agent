@@ -6,6 +6,7 @@ and common test utilities.
 """
 
 import pytest
+import re
 import sys
 from unittest.mock import MagicMock, Mock
 import os
@@ -66,7 +67,14 @@ def mock_vim():
             'exists("g:chat_gpt_session_mode") ? g:chat_gpt_session_mode : 1': "0",
             'exists("g:chat_gpt_log_level") ? g:chat_gpt_log_level : 0': "0",
         }
-        return defaults.get(expr, "")
+        if expr in defaults:
+            return defaults[expr]
+        # Resolve get_config()'s 'exists("g:x") ? g:x : ""' lookups
+        match = re.fullmatch(r'exists\("(g:\w+)"\) \? \1 : (.*)', expr)
+        if match:
+            var, fallback = match.groups()
+            return defaults.get(var, fallback.strip('"'))
+        return ""
 
     vim_mock.eval = mock_eval
     vim_mock.command = MagicMock()
@@ -77,7 +85,18 @@ def mock_vim():
     # Update the global mock
     sys.modules["vim"] = vim_mock
 
+    # Modules imported earlier hold a reference to the module-level mock;
+    # point them at this fixture's mock too, then restore afterwards.
+    patched = []
+    for mod_name, mod in list(sys.modules.items()):
+        if mod_name.startswith("chatgpt") and getattr(mod, "vim", None) is not None:
+            patched.append((mod, mod.vim))
+            mod.vim = vim_mock
+
     yield vim_mock
+
+    for mod, original in patched:
+        mod.vim = original
 
 
 @pytest.fixture

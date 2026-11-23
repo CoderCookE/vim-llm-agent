@@ -2,7 +2,7 @@
 
 ## Overview
 
-This plugin has been renamed from `vim-chatgpt` to `vim-llm-agent` to better reflect its capabilities as a full-featured LLM agent supporting multiple providers (OpenAI, Anthropic, Google, Ollama, OpenRouter).
+This plugin has been renamed from `vim-chatgpt` to `vim-llm-agent` to better reflect its capabilities as a full-featured LLM agent supporting multiple providers (OpenAI, Anthropic, AWS Bedrock, Google, Ollama, OpenRouter).
 
 **Full backwards compatibility is maintained** - all old configuration variables and directory names continue to work.
 
@@ -17,8 +17,8 @@ All configuration variables now use the `g:llm_agent_` prefix, but **old `g:chat
 
 | Old Variable | New Variable | Description |
 |-------------|--------------|-------------|
-| `g:chat_gpt_api_key` | `g:llm_agent_api_key` | API key for your provider |
-| `g:chat_gpt_model` | `g:llm_agent_model` | Model to use |
+| `g:chat_gpt_key` | `g:llm_agent_key` | API key for OpenAI / Azure OpenAI |
+| `g:chat_gpt_model` | `g:llm_agent_model` | Model to use (OpenAI) |
 | `g:chat_gpt_provider` | `g:llm_agent_provider` | Provider (openai, anthropic, etc.) |
 | `g:chat_gpt_max_tokens` | `g:llm_agent_max_tokens` | Max tokens in response |
 | `g:chat_gpt_temperature` | `g:llm_agent_temperature` | Sampling temperature |
@@ -28,6 +28,31 @@ All configuration variables now use the `g:llm_agent_` prefix, but **old `g:chat
 | `g:chat_gpt_require_tool_approval` | `g:llm_agent_require_tool_approval` | Require tool approval |
 | `g:chat_gpt_log_level` | `g:llm_agent_log_level` | Logging verbosity |
 | `g:chat_gpt_recent_history_size` | `g:llm_agent_recent_history_size` | Recent history window size |
+
+### Provider Variables
+
+Provider-specific settings now use `g:llm_agent_<provider>_<setting>`. The old unprefixed names still work as a fallback, but are **deprecated**: the first time one is used in a session, Vim shows a warning naming its replacement. Environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) are unchanged and still take precedence.
+
+| Deprecated Variable | New Variable |
+|---------------------|--------------|
+| `g:openai_api_key` | `g:llm_agent_openai_api_key` |
+| `g:openai_base_url` | `g:llm_agent_openai_base_url` |
+| `g:api_type` | `g:llm_agent_api_type` |
+| `g:azure_endpoint` | `g:llm_agent_azure_endpoint` |
+| `g:azure_deployment` | `g:llm_agent_azure_deployment` |
+| `g:azure_api_version` | `g:llm_agent_azure_api_version` |
+| `g:anthropic_api_key` | `g:llm_agent_anthropic_api_key` |
+| `g:anthropic_model` | `g:llm_agent_anthropic_model` |
+| `g:anthropic_base_url` | `g:llm_agent_anthropic_base_url` |
+| `g:gemini_api_key` | `g:llm_agent_gemini_api_key` |
+| `g:gemini_model` | `g:llm_agent_gemini_model` |
+| `g:ollama_base_url` | `g:llm_agent_ollama_base_url` |
+| `g:ollama_model` | `g:llm_agent_ollama_model` |
+| `g:openrouter_api_key` | `g:llm_agent_openrouter_api_key` |
+| `g:openrouter_model` | `g:llm_agent_openrouter_model` |
+| `g:openrouter_base_url` | `g:llm_agent_openrouter_base_url` |
+
+The Bedrock provider only uses the new style (`g:llm_agent_bedrock_model`, `g:llm_agent_bedrock_region`, `g:llm_agent_bedrock_profile`, `g:llm_agent_bedrock_endpoint_url`).
 
 ### Project Directory
 - **Old:** `.vim-chatgpt/`
@@ -63,8 +88,8 @@ Update variables at your own pace. Mix and match old and new:
 
 ```vim
 " Mix old and new - both work
-let g:llm_agent_api_key = $ANTHROPIC_API_KEY
-let g:chat_gpt_model = 'claude-3-5-sonnet-20241022'
+let g:llm_agent_key = $OPENAI_API_KEY
+let g:chat_gpt_model = 'gpt-4o'
 ```
 
 ### Option 3: Full Migration
@@ -73,19 +98,17 @@ Update all variables to new names:
 ```vim
 " New configuration style - FULLY SUPPORTED variables
 let g:llm_agent_provider = 'anthropic'        " ✅ Supported
-let g:llm_agent_model = 'claude-3-5-sonnet-20241022'  " ✅ Supported
-let g:llm_agent_key = $ANTHROPIC_API_KEY     " ✅ Supported
+let g:llm_agent_anthropic_model = 'claude-sonnet-4-5-20250929'  " ✅ Supported
+let g:llm_agent_anthropic_api_key = $ANTHROPIC_API_KEY          " ✅ Supported
 let g:llm_agent_max_tokens = 8192            " ✅ Supported
 let g:llm_agent_temperature = 0.7            " ✅ Supported
 let g:llm_agent_lang = 'Spanish'             " ✅ Supported
 let g:llm_agent_log_level = 2                " ✅ Supported
 let g:llm_agent_recent_history_size = 30480  " ✅ Supported
-
-" Note: The following still use old names internally (backwards compatible):
-let g:chat_gpt_enable_tools = 1
-let g:chat_gpt_require_plan_approval = 1
-let g:chat_gpt_session_mode = 1
-let g:chat_gpt_suppress_display = 0
+let g:llm_agent_enable_tools = 1             " ✅ Supported
+let g:llm_agent_require_plan_approval = 1    " ✅ Supported
+let g:llm_agent_session_mode = 1             " ✅ Supported
+let g:llm_agent_suppress_display = 0         " ✅ Supported
 ```
 
 ## Project Directory Migration
@@ -144,7 +167,9 @@ git remote set-url origin https://github.com/username/vim-llm-agent.git
 
 ## Deprecation Timeline
 
-**No deprecation planned.** The old variable names and directory names will continue to work indefinitely to ensure backwards compatibility.
+**No removal planned.** The old `g:chat_gpt_*` variable names and the `.vim-chatgpt/` directory will continue to work indefinitely to ensure backwards compatibility.
+
+The unprefixed provider variables listed under [Provider Variables](#provider-variables) (`g:anthropic_model`, `g:openai_api_key`, etc.) are deprecated: they still work today, but show a warning and may be removed in a future release.
 
 ## Questions?
 
