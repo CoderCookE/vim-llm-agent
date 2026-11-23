@@ -22,6 +22,7 @@ from chatgpt.utils import (
     load_plan,
     get_config,
     parse_conversation_history,
+    uses_anthropic_format,
 )
 from chatgpt.providers import create_provider
 from chatgpt.tools import get_tool_definitions, execute_tool
@@ -440,7 +441,7 @@ CRITICAL EXECUTION RULES:
 
                     # IMPORTANT: Add the assistant's plan response to conversation history
                     # so the model has context when we send the approval message
-                    if provider_name == "anthropic" and isinstance(messages, dict):
+                    if uses_anthropic_format(provider_name) and isinstance(messages, dict):
                         messages["messages"].append(
                             {
                                 "role": "assistant",
@@ -486,7 +487,7 @@ CRITICAL EXECUTION RULES:
 
                             # Send revision request back to model - handle all provider formats
                             # Note: Assistant message with plan was already added above
-                            if provider_name == "anthropic" and isinstance(
+                            if uses_anthropic_format(provider_name) and isinstance(
                                 messages, dict
                             ):
                                 messages["messages"].append(
@@ -522,7 +523,7 @@ CRITICAL EXECUTION RULES:
                             # Send approval message to model to trigger execution - handle all provider formats
                             approval_instruction = "Plan approved. Execute step 1 now.\n\nCRITICAL INSTRUCTIONS:\n- Your response must contain ONLY the tool/function call for step 1\n- Do NOT write ANY text content in your response\n- Do NOT output headers like 'Tool Execution' or '======' or 'Step 1:'\n- The system will automatically display the tool execution progress\n- Just make the actual API function call and nothing else\n- After the tool completes, you'll see the results and can proceed to the next step"
 
-                            if provider_name == "anthropic" and isinstance(
+                            if uses_anthropic_format(provider_name) and isinstance(
                                 messages, dict
                             ):
                                 messages["messages"].append(
@@ -619,7 +620,7 @@ CRITICAL EXECUTION RULES:
 
             # For Anthropic, we need to add the assistant message with ALL tool_use blocks first
             if (
-                provider_name == "anthropic"
+                uses_anthropic_format(provider_name)
                 and isinstance(messages, dict)
                 and "messages" in messages
             ):
@@ -714,7 +715,7 @@ CRITICAL EXECUTION RULES:
                                 "content": tool_result,
                             }
                         )
-            elif provider_name == "anthropic":
+            elif uses_anthropic_format(provider_name):
                 # Anthropic format - add ONE user message with ALL tool_result blocks
                 if isinstance(messages, dict) and "messages" in messages:
                     tool_result_content = []

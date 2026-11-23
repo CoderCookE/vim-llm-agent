@@ -514,3 +514,104 @@ class TestGetProjectDir:
 
         # Should return new directory name (will be created)
         assert result == "/test/project/.vim-llm-agent"
+
+
+class TestAnthropicFormatProviders:
+    """Tests for uses_anthropic_format / append_tool_results routing"""
+
+    def test_uses_anthropic_format(self):
+        from chatgpt.utils import uses_anthropic_format
+
+        assert uses_anthropic_format("anthropic")
+        assert uses_anthropic_format("bedrock")
+        assert not uses_anthropic_format("openai")
+        assert not uses_anthropic_format("gemini")
+
+    def test_append_tool_results_bedrock(self):
+        from chatgpt.utils import append_tool_results
+
+        messages = {"system": "s", "messages": [{"role": "user", "content": "hi"}]}
+        append_tool_results(
+            messages,
+            "bedrock",
+            "Reading",
+            [{"id": "t1", "name": "read_file", "arguments": {"path": "a"}}],
+            [("t1", "read_file", {"path": "a"}, "contents")],
+        )
+        assert messages["messages"][1] == {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Reading"},
+                {"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "a"}},
+            ],
+        }
+        assert messages["messages"][2] == {
+            "role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "contents"}],
+        }
+
+
+class TestGetConfigLegacy:
+    """Tests for get_config's deprecated unprefixed-name fallback"""
+
+    @pytest.fixture(autouse=True)
+    def reset_warnings(self):
+        import chatgpt.utils as utils
+
+        utils._warned_deprecated.clear()
+        yield
+        utils._warned_deprecated.clear()
+
+    @staticmethod
+    def _eval_for(values):
+        def eval_side_effect(expr):
+            for var, val in values.items():
+                if f'exists("{var}")' in expr:
+                    return val
+            return ""
+
+        return eval_side_effect
+
+    @patch("chatgpt.utils.vim")
+    def test_new_name_wins_over_legacy(self, mock_vim):
+        from tests.conftest import VimError
+
+        mock_vim.error = VimError
+        mock_vim.eval.side_effect = self._eval_for(
+            {"g:llm_agent_anthropic_model": "new", "g:anthropic_model": "old"}
+        )
+        assert get_config("anthropic_model", legacy="g:anthropic_model") == "new"
+        mock_vim.command.assert_not_called()
+
+    @patch("chatgpt.utils.vim")
+    def test_legacy_fallback_warns_once(self, mock_vim):
+        from tests.conftest import VimError
+
+        mock_vim.error = VimError
+        mock_vim.eval.side_effect = self._eval_for({"g:anthropic_model": "old"})
+
+        assert get_config("anthropic_model", legacy="g:anthropic_model") == "old"
+        assert get_config("anthropic_model", legacy="g:anthropic_model") == "old"
+
+        echoes = [c for c in mock_vim.command.call_args_list if "echomsg" in c.args[0]]
+        assert len(echoes) == 1
+        assert "g:anthropic_model is deprecated" in echoes[0].args[0]
+        assert "g:llm_agent_anthropic_model" in echoes[0].args[0]
+
+    @patch("chatgpt.utils.vim")
+    def test_chat_gpt_fallback_does_not_echo(self, mock_vim):
+        from tests.conftest import VimError
+
+        mock_vim.error = VimError
+        mock_vim.eval.side_effect = self._eval_for({"g:chat_gpt_model": "gpt-4"})
+        assert get_config("model") == "gpt-4"
+        echoes = [c for c in mock_vim.command.call_args_list if "echomsg" in c.args[0]]
+        assert echoes == []
+
+    @patch("chatgpt.utils.vim")
+    def test_legacy_unset_returns_default(self, mock_vim):
+        from tests.conftest import VimError
+
+        mock_vim.error = VimError
+        mock_vim.eval.return_value = ""
+        assert get_config("gemini_model", "d", legacy="g:gemini_model") == "d"

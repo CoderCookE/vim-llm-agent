@@ -8,12 +8,13 @@ This plugin brings the power of AI language models and agentic workflows directl
 - 🤖 **Agentic Workflows** - Plan approval system with autonomous tool execution
 - 🔧 **Tool Calling** - File operations, git integration, project exploration
 - 💬 **Context-Aware** - Session persistence, conversation summaries, project context
-- 🔄 **Multi-Provider** - OpenAI, Anthropic (Claude), Google (Gemini), Ollama, OpenRouter
+- 🔄 **Multi-Provider** - OpenAI, Anthropic (Claude), AWS Bedrock, Google (Gemini), Ollama, OpenRouter
 - 📝 **Code Intelligence** - Explain, review, refactor code with visual selections
 
 **Supported Providers:**
 - OpenAI (ChatGPT, GPT-4, GPT-4o, etc.)
 - Anthropic (Claude 3.5 Sonnet, Claude 3 Opus, etc.)
+- AWS Bedrock (Claude models via your AWS account)
 - Google (Gemini)
 - Ollama (local models - Llama, Mistral, etc.)
 - OpenRouter (unified API for 100+ models)
@@ -23,7 +24,7 @@ This plugin brings the power of AI language models and agentic workflows directl
 ## Prerequisites
 
 1) Vim with Python3 support.
-2) An API key from your chosen provider (OpenAI, Anthropic, Gemini, or OpenRouter).
+2) An API key from your chosen provider (OpenAI, Anthropic, Gemini, or OpenRouter), or AWS credentials for Bedrock.
 
 ## Installation
 
@@ -54,7 +55,7 @@ export OPENAI_API_KEY='sk-...'
 
 Or in your `.vimrc`:
 ```vim
-let g:openai_api_key='sk-...'
+let g:llm_agent_openai_api_key='sk-...'
 let g:llm_agent_model='gpt-4o'  " Optional: specify model
 ```
 
@@ -67,16 +68,16 @@ export OPENAI_API_BASE='https://openai.xxx.cloud/v1'
 
 Or in your `.vimrc`:
 ```vim
-let g:openai_base_url='https://openai.xxx.cloud/v1'  " Custom base URL (alternative to env vars)
+let g:llm_agent_openai_base_url='https://openai.xxx.cloud/v1'  " Custom base URL (alternative to env vars)
 ```
 
 **Azure OpenAI:**
 ```vim
-let g:api_type = 'azure'
+let g:llm_agent_api_type = 'azure'
 let g:llm_agent_key = 'your_azure_chatgpt_api'
-let g:azure_endpoint = 'your_azure_endpoint'
-let g:azure_deployment = 'your_azure_deployment'
-let g:azure_api_version = '2023-03-15-preview'
+let g:llm_agent_azure_endpoint = 'your_azure_endpoint'
+let g:llm_agent_azure_deployment = 'your_azure_deployment'
+let g:llm_agent_azure_api_version = '2023-03-15-preview'
 ```
 
 #### Anthropic (Claude)
@@ -90,8 +91,8 @@ export ANTHROPIC_API_KEY='sk-ant-...'
 Or in your `.vimrc`:
 ```vim
 let g:llm_agent_provider = 'anthropic'
-let g:anthropic_api_key = 'sk-ant-...'
-let g:anthropic_model = 'claude-sonnet-4-5-20250929'  " Optional
+let g:llm_agent_anthropic_api_key = 'sk-ant-...'
+let g:llm_agent_anthropic_model = 'claude-sonnet-4-5-20250929'  " Optional
 ```
 
 **With Custom Base URL (for proxies or custom deployments):**
@@ -101,8 +102,51 @@ export ANTHROPIC_BASE_URL='https://your-proxy.com/v1'
 
 Or in your `.vimrc`:
 ```vim
-let g:anthropic_base_url = 'https://your-proxy.com/v1'
+let g:llm_agent_anthropic_base_url = 'https://your-proxy.com/v1'
 ```
+
+#### AWS Bedrock (Claude)
+
+Runs Claude models through your AWS account. Requires `boto3` in Vim's Python (only needed if you use Bedrock):
+
+```bash
+pip install boto3
+```
+
+Credentials come from the standard AWS chain (environment variables, `~/.aws` profiles, SSO, instance/role credentials), so if `aws sts get-caller-identity` works, the plugin will too. Your account needs model access enabled for the model in the Bedrock console.
+
+```bash
+export AWS_REGION='us-east-1'
+export AWS_PROFILE='my-profile'   # Optional
+```
+
+Or in your `.vimrc`:
+```vim
+let g:llm_agent_provider = 'bedrock'
+let g:llm_agent_bedrock_region = 'us-east-1'                                    " Optional if AWS_REGION is set
+let g:llm_agent_bedrock_profile = 'my-profile'                                  " Optional, overrides AWS_PROFILE
+let g:llm_agent_bedrock_model = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'  " Optional (default shown)
+let g:llm_agent_bedrock_endpoint_url = 'https://vpce-...'                       " Optional: VPC endpoint
+```
+
+**With static access keys** (instead of a profile or role):
+
+```bash
+export AWS_ACCESS_KEY_ID='AKIA...'
+export AWS_SECRET_ACCESS_KEY='...'
+export AWS_SESSION_TOKEN='...'   # Only for temporary credentials
+```
+
+Or in your `.vimrc`, where they take precedence over environment variables and any profile:
+```vim
+let g:llm_agent_bedrock_access_key_id = 'AKIA...'
+let g:llm_agent_bedrock_secret_access_key = $MY_BEDROCK_SECRET   " Avoid committing secrets to your dotfiles
+let g:llm_agent_bedrock_session_token = '...'                     " Optional: temporary credentials only
+```
+
+The key's IAM identity needs `bedrock:InvokeModelWithResponseStream` on the model (and its inference profile).
+
+`g:llm_agent_bedrock_model` takes a Bedrock model ID or inference profile ID (newer Claude models require an inference profile such as `us.anthropic...` or `global.anthropic...`). Only Anthropic Claude models are supported, and tool calling works the same as with the Anthropic provider.
 
 #### Gemini (Google)
 
@@ -115,8 +159,8 @@ export GEMINI_API_KEY='...'
 Or in your `.vimrc`:
 ```vim
 let g:llm_agent_provider = 'gemini'
-let g:gemini_api_key = '...'
-let g:gemini_model = 'gemini-2.5-flash'  " Optional
+let g:llm_agent_gemini_api_key = '...'
+let g:llm_agent_gemini_model = 'gemini-2.5-flash'  " Optional
 ```
 
 #### Ollama (Local Models)
@@ -125,8 +169,8 @@ Install Ollama from: https://ollama.ai
 
 ```vim
 let g:llm_agent_provider = 'ollama'
-let g:ollama_model = 'llama3.2'  " or codellama, mistral, etc.
-let g:ollama_base_url = 'http://localhost:11434'  " Optional
+let g:llm_agent_ollama_model = 'llama3.2'  " or codellama, mistral, etc.
+let g:llm_agent_ollama_base_url = 'http://localhost:11434'  " Optional
 ```
 
 #### OpenRouter (Multi-Provider)
@@ -140,9 +184,9 @@ export OPENROUTER_API_KEY='sk-or-...'
 Or in your `.vimrc`:
 ```vim
 let g:llm_agent_provider = 'openrouter'
-let g:openrouter_api_key = 'sk-or-...'
-let g:openrouter_model = 'anthropic/claude-3.5-sonnet'  " Choose any available model
-let g:openrouter_base_url = 'https://openrouter.ai/api/v1'  " Optional: custom base URL (default shown)
+let g:llm_agent_openrouter_api_key = 'sk-or-...'
+let g:llm_agent_openrouter_model = 'anthropic/claude-3.5-sonnet'  " Choose any available model
+let g:llm_agent_openrouter_base_url = 'https://openrouter.ai/api/v1'  " Optional: custom base URL (default shown)
 ```
 
 ## Customization
@@ -151,15 +195,18 @@ let g:openrouter_base_url = 'https://openrouter.ai/api/v1'  " Optional: custom b
 
 ```vim
 " Select your AI provider (default: 'openai')
-let g:llm_agent_provider = 'openai'  " Options: 'openai', 'anthropic', 'gemini', 'ollama', 'openrouter'
+let g:llm_agent_provider = 'openai'  " Options: 'openai', 'anthropic', 'bedrock', 'gemini', 'ollama', 'openrouter'
 
 " Provider-specific models (optional - defaults shown)
-let g:llm_agent_model = 'gpt-4o'                           " For OpenAI
-let g:anthropic_model = 'claude-sonnet-4-5-20250929'      " For Anthropic
-let g:gemini_model = 'gemini-2.5-flash'               " For Gemini
-let g:ollama_model = 'llama3.2'                           " For Ollama
-let g:openrouter_model = 'anthropic/claude-3.5-sonnet'    " For OpenRouter
+let g:llm_agent_model = 'gpt-4o'                                              " For OpenAI
+let g:llm_agent_anthropic_model = 'claude-sonnet-4-5-20250929'                " For Anthropic
+let g:llm_agent_bedrock_model = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0' " For Bedrock
+let g:llm_agent_gemini_model = 'gemini-2.5-flash'                             " For Gemini
+let g:llm_agent_ollama_model = 'llama3.2'                                     " For Ollama
+let g:llm_agent_openrouter_model = 'anthropic/claude-3.5-sonnet'              " For OpenRouter
 ```
+
+Provider settings follow the pattern `g:llm_agent_<provider>_<setting>`. The older unprefixed names (`g:anthropic_model`, `g:gemini_api_key`, `g:openai_api_key`, `g:azure_endpoint`, `g:api_type`, etc.) are deprecated but still work; Vim shows a one-time warning naming the replacement. See [MIGRATION.md](MIGRATION.md#provider-variables).
 
 ### General Options
 
@@ -177,7 +224,7 @@ let g:llm_agent_log_level=0  " 0=off, 1=basic, 2=verbose
 
 **Option Details:**
 
- - **g:llm_agent_provider**: Select which AI provider to use. Options: `'openai'`, `'anthropic'`, `'gemini'`, `'ollama'`, `'openrouter'`. Default: `'openai'`
+ - **g:llm_agent_provider**: Select which AI provider to use. Options: `'openai'`, `'anthropic'`, `'bedrock'`, `'gemini'`, `'ollama'`, `'openrouter'`. Default: `'openai'`
  - **g:llm_agent_max_tokens**: Maximum number of tokens in the AI response. Default: 2000
  - **g:llm_agent_model**: Model name for OpenAI (e.g., `'gpt-4o'`, `'gpt-3.5-turbo'`, `'o1'`). Note: When using other providers, use their respective model variables instead.
  - **g:llm_agent_session_mode**: Maintain persistent conversation history across sessions. Default: 1 (enabled). When enabled, conversations are saved to `.vim-llm-agent/history.txt`. Set to 0 to disable history persistence.
@@ -186,7 +233,7 @@ let g:llm_agent_log_level=0  " 0=off, 1=basic, 2=verbose
  - **g:llm_agent_split_direction**: Window split direction: `'vertical'` or `'horizontal'`. Default: `'vertical'`
  - **g:split_ratio**: Split window size ratio. If set to 4, the window will be 1/4 of the screen. Default: 3
  - **g:chat_persona**: Default AI persona to load on startup. Must match a key in `g:gpt_personas` or `g:llm_agent_custom_persona`. Default: `'default'`. See [Custom Personas](#custom-personas) section.
- - **g:llm_agent_enable_tools**: Enable AI tool/function calling capabilities (allows AI to search files, read files, etc.). Default: 1 (enabled). Supported by OpenAI and Anthropic providers.
+ - **g:llm_agent_enable_tools**: Enable AI tool/function calling capabilities (allows AI to search files, read files, etc.). Default: 1 (enabled). Supported by OpenAI, Anthropic, and Bedrock providers.
  - **g:llm_agent_require_plan_approval**: Require user approval before executing tool-based plans. When enabled, the AI will present a plan first, wait for approval, then execute tools in batches of 3 iterations with review points. Default: 1 (enabled).
  - **g:chat_gpt_require_tool_approval**: Require individual tool approval on first use. When enabled, you'll be prompted to approve/deny each new tool the first time the AI attempts to use it. Default: 1 (enabled). Options:
    - **Allow Once**: Approve this single tool execution
@@ -377,6 +424,7 @@ With `g:llm_agent_require_plan_approval` enabled, the workflow adapts to discove
 Tools are currently supported by:
 - **OpenAI** (GPT-4, GPT-4o, etc.)
 - **Anthropic** (Claude Sonnet, Claude Opus)
+- **AWS Bedrock** (Claude models)
 
 ### Disabling Tools
 
@@ -601,7 +649,7 @@ Full-featured LLM agent for Vim with multi-provider support and autonomous tool 
 ## Tech Stack
 - VimScript
 - Python 3
-- Multiple AI providers (OpenAI, Anthropic, Gemini, Ollama, OpenRouter)
+- Multiple AI providers (OpenAI, Anthropic, AWS Bedrock, Gemini, Ollama, OpenRouter)
 
 ## Structure
 - plugin/chatgpt.vim - Main plugin file with VimScript and embedded Python
@@ -756,9 +804,9 @@ python3.13 -c "import requests; print('✓ Success')"
 - Install a version with Python 3: `brew install vim` (macOS) or compile with `--enable-python3interp`
 
 **Q: How do I know which provider/model I'm using?**
-- Check `:echo g:chat_gpt_provider` in Vim
-- For OpenAI, check `:echo g:chat_gpt_model`
-- For other providers, check `:echo g:anthropic_model`, etc.
+- Check `:echo g:llm_agent_provider` in Vim
+- For OpenAI, check `:echo g:llm_agent_model`
+- For other providers, check `:echo get(g:, 'llm_agent_anthropic_model', 'default')`, etc. If the variable is unset, the default listed under [Provider Configuration](#provider-configuration) is used
 
 ## Notes
 This plugin is not affiliated with or endorsed by OpenAI, Anthropic, Google/Gemini, or any other AI provider. You are responsible for managing your API usage and any associated costs when using this plugin.
