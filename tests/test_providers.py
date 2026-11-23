@@ -341,6 +341,64 @@ class TestBedrockProvider:
         session.client.assert_called_once_with("bedrock-runtime", endpoint_url="https://vpce.example")
 
 
+    def test_bedrock_static_access_keys(self, mock_vim, fake_boto3):
+        """Explicit access keys are passed to boto3 and override the profile"""
+        boto3_mod, _, client = fake_boto3
+        client.invoke_model_with_response_stream.return_value = _bedrock_stream([])
+        provider = BedrockProvider(
+            {
+                "region": "us-east-1",
+                "profile": "ignored",
+                "access_key_id": "AKIATEST",
+                "secret_access_key": "secret",
+                "session_token": "token",
+            }
+        )
+        list(provider.stream_chat(BEDROCK_MESSAGES, "m", 0.7, 100))
+        boto3_mod.Session.assert_called_once_with(
+            region_name="us-east-1",
+            aws_access_key_id="AKIATEST",
+            aws_secret_access_key="secret",
+            aws_session_token="token",
+        )
+
+    def test_bedrock_static_keys_without_session_token(self, mock_vim, fake_boto3):
+        boto3_mod, _, client = fake_boto3
+        client.invoke_model_with_response_stream.return_value = _bedrock_stream([])
+        provider = BedrockProvider({"access_key_id": "AKIATEST", "secret_access_key": "secret"})
+        list(provider.stream_chat(BEDROCK_MESSAGES, "m", 0.7, 100))
+        boto3_mod.Session.assert_called_once_with(
+            region_name=None, aws_access_key_id="AKIATEST", aws_secret_access_key="secret"
+        )
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            {"access_key_id": "AKIATEST"},
+            {"secret_access_key": "secret"},
+            {"session_token": "token"},
+        ],
+    )
+    def test_bedrock_incomplete_static_keys(self, mock_vim, fake_boto3, config):
+        with pytest.raises(ValueError, match="g:llm_agent_bedrock_"):
+            BedrockProvider(config)
+
+    def test_create_provider_bedrock_keys_not_logged(self, mock_vim, fake_boto3):
+        values = {
+            "g:llm_agent_bedrock_access_key_id": "AKIATEST",
+            "g:llm_agent_bedrock_secret_access_key": "super-secret",
+        }
+        mock_vim.eval = lambda expr: next(
+            (v for k, v in values.items() if f'exists("{k}")' in expr), ""
+        )
+        with patch("chatgpt.providers.debug_log") as log:
+            provider = create_provider("bedrock")
+        assert provider.config["access_key_id"] == "AKIATEST"
+        assert provider.config["secret_access_key"] == "super-secret"
+        logged = " ".join(str(c.args[0]) for c in log.call_args_list)
+        assert "super-secret" not in logged and "AKIATEST" not in logged
+
+
 class TestGoogleProvider:
     """Tests for GoogleProvider (Gemini)"""
 

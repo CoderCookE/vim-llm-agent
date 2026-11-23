@@ -129,6 +129,23 @@ let g:llm_agent_bedrock_model = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'  
 let g:llm_agent_bedrock_endpoint_url = 'https://vpce-...'                       " Optional: VPC endpoint
 ```
 
+**With static access keys** (instead of a profile or role):
+
+```bash
+export AWS_ACCESS_KEY_ID='AKIA...'
+export AWS_SECRET_ACCESS_KEY='...'
+export AWS_SESSION_TOKEN='...'   # Only for temporary credentials
+```
+
+Or in your `.vimrc`, where they take precedence over environment variables and any profile:
+```vim
+let g:llm_agent_bedrock_access_key_id = 'AKIA...'
+let g:llm_agent_bedrock_secret_access_key = $MY_BEDROCK_SECRET   " Avoid committing secrets to your dotfiles
+let g:llm_agent_bedrock_session_token = '...'                     " Optional: temporary credentials only
+```
+
+The key's IAM identity needs `bedrock:InvokeModelWithResponseStream` on the model (and its inference profile).
+
 `g:llm_agent_bedrock_model` takes a Bedrock model ID or inference profile ID (newer Claude models require an inference profile such as `us.anthropic...` or `global.anthropic...`). Only Anthropic Claude models are supported, and tool calling works the same as with the Anthropic provider.
 
 #### Gemini (Google)

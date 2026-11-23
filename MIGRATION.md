@@ -52,7 +52,7 @@ Provider-specific settings now use `g:llm_agent_<provider>_<setting>`. The old u
 | `g:openrouter_model` | `g:llm_agent_openrouter_model` |
 | `g:openrouter_base_url` | `g:llm_agent_openrouter_base_url` |
 
-The Bedrock provider only uses the new style (`g:llm_agent_bedrock_model`, `g:llm_agent_bedrock_region`, `g:llm_agent_bedrock_profile`, `g:llm_agent_bedrock_endpoint_url`).
+The Bedrock provider only uses the new style (`g:llm_agent_bedrock_model`, `g:llm_agent_bedrock_region`, `g:llm_agent_bedrock_profile`, `g:llm_agent_bedrock_endpoint_url`, `g:llm_agent_bedrock_access_key_id`, `g:llm_agent_bedrock_secret_access_key`, `g:llm_agent_bedrock_session_token`).
 
 ### Project Directory
 - **Old:** `.vim-chatgpt/`

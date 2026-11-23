@@ -443,7 +443,10 @@ class BedrockProvider(AnthropicProvider):
     message history and tool handling are identical to AnthropicProvider.
     Authentication uses the standard AWS credential chain (env vars, profiles,
     SSO, instance roles) through boto3, which is only imported when this
-    provider is selected.
+    provider is selected. Static access keys can also be set explicitly via
+    g:llm_agent_bedrock_access_key_id / g:llm_agent_bedrock_secret_access_key
+    (plus g:llm_agent_bedrock_session_token for temporary credentials), which
+    take precedence over the credential chain and any profile.
     """
 
     name = "Bedrock"
@@ -458,6 +461,19 @@ class BedrockProvider(AnthropicProvider):
                 "The Bedrock provider requires boto3. Install it into Vim's Python: pip install boto3"
             )
 
+        has_key_id = bool(self.config.get("access_key_id"))
+        has_secret = bool(self.config.get("secret_access_key"))
+        if has_key_id != has_secret:
+            raise ValueError(
+                "Bedrock access keys require both g:llm_agent_bedrock_access_key_id "
+                "and g:llm_agent_bedrock_secret_access_key"
+            )
+        if self.config.get("session_token") and not has_key_id:
+            raise ValueError(
+                "g:llm_agent_bedrock_session_token requires "
+                "g:llm_agent_bedrock_access_key_id and g:llm_agent_bedrock_secret_access_key"
+            )
+
     def get_model(self):
         """Get the Bedrock model ID or inference profile ID"""
         return self.config.get("model") or self.DEFAULT_MODEL
@@ -465,10 +481,17 @@ class BedrockProvider(AnthropicProvider):
     def _client(self):
         import boto3
 
-        session = boto3.Session(
-            profile_name=self.config.get("profile") or None,
-            region_name=self.config.get("region") or None,
-        )
+        session_kwargs = {"region_name": self.config.get("region") or None}
+        if self.config.get("access_key_id"):
+            # Explicit keys win; skip the profile so a missing/unrelated
+            # AWS_PROFILE can't interfere.
+            session_kwargs["aws_access_key_id"] = self.config["access_key_id"]
+            session_kwargs["aws_secret_access_key"] = self.config["secret_access_key"]
+            if self.config.get("session_token"):
+                session_kwargs["aws_session_token"] = self.config["session_token"]
+        else:
+            session_kwargs["profile_name"] = self.config.get("profile") or None
+        session = boto3.Session(**session_kwargs)
         if not session.region_name:
             raise ValueError(
                 "AWS region required for Bedrock. Set AWS_REGION or g:llm_agent_bedrock_region"
@@ -796,8 +819,16 @@ def create_provider(provider_name):
             or os.getenv("AWS_DEFAULT_REGION"),
             "profile": get_config("bedrock_profile") or os.getenv("AWS_PROFILE"),
             "endpoint_url": get_config("bedrock_endpoint_url"),
+            "access_key_id": get_config("bedrock_access_key_id"),
+            "secret_access_key": get_config("bedrock_secret_access_key"),
+            "session_token": get_config("bedrock_session_token"),
         }
-        debug_log(f"DEBUG: Creating Bedrock provider with config={config}")
+        debug_log(
+            "DEBUG: Creating Bedrock provider with "
+            f"model={config['model']}, region={config['region']}, "
+            f"profile={config['profile']}, endpoint_url={config['endpoint_url']}, "
+            f"static_keys={'yes' if config['access_key_id'] else 'no'}"
+        )
         return BedrockProvider(config)
 
     elif provider_name == "gemini":
