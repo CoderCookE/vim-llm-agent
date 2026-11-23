@@ -55,6 +55,7 @@ def mock_vim():
             "g:chat_gpt_session_id": "test-session",
             "g:chat_gpt_provider": "openai",
             "g:chat_persona": "default",
+            "g:llm_agent_persona": "default",
             "g:gpt_personas": {
                 "default": "You are a helpful assistant"
             },  # Return actual dict
@@ -103,7 +104,10 @@ def mock_history_file(temp_project_dir):
     """Create a mock history file"""
     history_path = os.path.join(temp_project_dir, ".vim-chatgpt", "history.txt")
     with open(history_path, "w") as f:
-        f.write("User: Hello\nAssistant: Hi there!\n")
+        f.write(
+            "\x01>>>User:\x01\nHello\n\n"
+            "\x01>>>Assistant:\x01\nHi there!\n\n"
+        )
     return history_path
 
 

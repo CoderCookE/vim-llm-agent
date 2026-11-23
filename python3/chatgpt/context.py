@@ -6,12 +6,105 @@ understand projects in future conversations.
 """
 
 import os
-import json
 import re
 from datetime import datetime
-from chatgpt.utils import debug_log, get_config, get_project_dir
+from chatgpt.utils import debug_log, get_config, get_project_dir, append_tool_results
 from chatgpt.providers import create_provider
 from chatgpt.tools import get_tool_definitions, execute_tool
+
+
+def _get_project_files(project_dir=None):
+    """
+    Get a sorted list of all files in the project.
+
+    Args:
+        project_dir: Project directory (defaults to current directory)
+
+    Returns:
+        List of file paths relative to project_dir
+    """
+    if project_dir is None:
+        project_dir = os.getcwd()
+
+    files = []
+    ignore_dirs = {'.git', '.vim-llm-agent', '.vim-chatgpt', 'node_modules',
+                   '__pycache__', '.venv', 'venv', 'env', '.env', 'target',
+                   'dist', 'build', '.next', '.cache'}
+
+    for root, dirs, filenames in os.walk(project_dir):
+        # Remove ignored directories from traversal
+        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+
+        for filename in filenames:
+            filepath = os.path.join(root, filename)
+            # Get path relative to project_dir
+            relpath = os.path.relpath(filepath, project_dir)
+            files.append(relpath)
+
+    return sorted(files)
+
+
+def _save_file_manifest(vim_dir):
+    """
+    Save a manifest of current project files for future comparison.
+
+    Args:
+        vim_dir: The .vim-llm-agent directory path
+    """
+    try:
+        # Get project directory (parent of vim_dir)
+        project_dir = os.path.dirname(vim_dir)
+        files = _get_project_files(project_dir)
+
+        manifest_file = os.path.join(vim_dir, "file_manifest.txt")
+        with open(manifest_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(files))
+
+        debug_log(f"INFO: Saved file manifest with {len(files)} files to {manifest_file}")
+    except Exception as e:
+        debug_log(f"WARNING: Failed to save file manifest: {str(e)}")
+
+
+def has_new_files(vim_dir):
+    """
+    Check if there are new files since the last context generation.
+
+    Args:
+        vim_dir: The .vim-llm-agent directory path
+
+    Returns:
+        bool: True if new files were added, False otherwise
+    """
+    try:
+        manifest_file = os.path.join(vim_dir, "file_manifest.txt")
+
+        # If no manifest exists, we should generate context
+        if not os.path.exists(manifest_file):
+            debug_log("INFO: No file manifest exists, should generate context")
+            return True
+
+        # Load old file list
+        with open(manifest_file, "r", encoding="utf-8") as f:
+            old_files = set(line.strip() for line in f if line.strip())
+
+        # Get current file list
+        project_dir = os.path.dirname(vim_dir)
+        current_files = set(_get_project_files(project_dir))
+
+        # Check if there are new files
+        new_files = current_files - old_files
+
+        if new_files:
+            debug_log(f"INFO: Found {len(new_files)} new files: {list(new_files)[:10]}")
+            return True
+        else:
+            debug_log("INFO: No new files detected")
+            return False
+
+    except Exception as e:
+        debug_log(f"WARNING: Error checking for new files: {str(e)}")
+        # On error, default to regenerating to be safe
+        return True
 
 
 def generate_project_context():
@@ -123,86 +216,16 @@ Important: Output ONLY the markdown summary. Do not include any conversational t
             if tool_calls:
                 debug_log(f"INFO: Executing {len(tool_calls)} tool calls")
 
-                # For Anthropic, we need to add the assistant message with ALL tool_use blocks first
-                if provider_name == "anthropic" and isinstance(messages, dict) and "messages" in messages:
-                    # Build assistant message with text + all tool_use blocks
-                    assistant_content = []
-                    if response_content.strip():
-                        assistant_content.append({"type": "text", "text": response_content})
-
-                    for tool_call in tool_calls:
-                        assistant_content.append({
-                            "type": "tool_use",
-                            "id": tool_call["id"],
-                            "name": tool_call["name"],
-                            "input": tool_call["arguments"]
-                        })
-
-                    messages["messages"].append({
-                        "role": "assistant",
-                        "content": assistant_content
-                    })
-
-                # Execute each tool and collect results
                 tool_results = []
                 for tool_call in tool_calls:
-                    # Handle different tool_call formats
-                    if "function" in tool_call:
-                        # OpenAI format: {"id": ..., "type": "function", "function": {"name": ..., "arguments": "{...}"}}
-                        tool_name = tool_call.get("function", {}).get("name", "")
-                        tool_args_str = tool_call.get("function", {}).get("arguments", "{}")
-                        try:
-                            tool_args = json.loads(tool_args_str)
-                        except json.JSONDecodeError:
-                            tool_args = {}
-                    else:
-                        # Anthropic format: {"id": ..., "name": ..., "arguments": {...}}
-                        tool_name = tool_call.get("name", "")
-                        tool_args = tool_call.get("arguments", {})
-
+                    tool_name = tool_call.get("name", "")
+                    tool_args = tool_call.get("arguments", {})
+                    tool_id = tool_call.get("id", "")
                     debug_log(f"INFO: Executing tool: {tool_name}")
                     result = execute_tool(tool_name, tool_args)
-                    tool_id = tool_call.get("id", "")
-
                     tool_results.append((tool_id, tool_name, tool_args, result))
 
-                # Add tool results to messages - format depends on provider
-                if provider_name == "anthropic":
-                    # Anthropic format - add ONE user message with ALL tool_result blocks
-                    if isinstance(messages, dict) and "messages" in messages:
-                        tool_result_content = []
-                        for tool_id, tool_name, tool_args, tool_result in tool_results:
-                            tool_result_content.append({
-                                "type": "tool_result",
-                                "tool_use_id": tool_id,
-                                "content": tool_result
-                            })
-
-                        messages["messages"].append({
-                            "role": "user",
-                            "content": tool_result_content
-                        })
-                else:
-                    # OpenAI and other formats - add each tool call and result individually
-                    if isinstance(messages, list):
-                        for tool_id, tool_name, tool_args, tool_result in tool_results:
-                            messages.append({
-                                "role": "assistant",
-                                "content": None,
-                                "tool_calls": [{
-                                    "id": tool_id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": tool_name,
-                                        "arguments": json.dumps(tool_args)
-                                    }
-                                }]
-                            })
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_id,
-                                "content": tool_result
-                            })
+                append_tool_results(messages, provider_name, response_content, tool_calls, tool_results)
 
         except Exception as e:
             debug_log(f"ERROR: Failed during context generation: {str(e)}")
@@ -237,3 +260,6 @@ Important: Output ONLY the markdown summary. Do not include any conversational t
         return
 
     debug_log("INFO: Context generation complete")
+
+    # Save file manifest for future comparisons
+    _save_file_manifest(vim_dir)

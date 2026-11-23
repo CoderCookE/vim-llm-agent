@@ -27,6 +27,17 @@ from chatgpt.providers import create_provider
 from chatgpt.tools import get_tool_definitions, execute_tool
 
 
+def _display_response(content, finish_reason, session_id):
+    """Pass display content via vim.vars to avoid VimScript string-escaping issues."""
+    vim.vars["_llm_display_content"] = content
+    vim.vars["_llm_display_finish"] = finish_reason
+    vim.command(
+        "call DisplayChatGPTResponse("
+        "g:_llm_display_content, g:_llm_display_finish, "
+        "'{0}')".format(session_id.replace("'", "''"))
+    )
+
+
 def is_plan_completed(response_text):
     """
     Detect if the AI's response indicates plan completion.
@@ -63,7 +74,7 @@ def is_plan_completed(response_text):
 
 def chat_gpt(prompt, silent=False):
     """Main chat function that handles conversation with AI providers
-
+    
     Args:
         prompt: The user's prompt/question
         silent: If True, suppress all display output (for background operations)
@@ -306,11 +317,7 @@ CRITICAL EXECUTION RULES:
     if session_id and not suppress_display:
         content = "\n\n\x01>>>User:\x01\n" + prompt + "\n\n\x01>>>Assistant:\x01\n"
 
-        vim.command(
-            "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                content.replace("'", "''"), session_id
-            )
-        )
+        _display_response(content, "", session_id)
         vim.command("redraw")
 
     # Create messages using provider
@@ -366,11 +373,7 @@ CRITICAL EXECUTION RULES:
                     accumulated_content += content
 
                     if not suppress_display:
-                        vim.command(
-                            "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                                content.replace("'", "''"), chunk_session_id
-                            )
-                        )
+                        _display_response(content, "", chunk_session_id)
                         vim.command("redraw")
 
                 # Handle finish
@@ -386,11 +389,7 @@ CRITICAL EXECUTION RULES:
                         tool_calls_to_process = tool_calls
 
                     if not suppress_display:
-                        vim.command(
-                            "call DisplayChatGPTResponse('', '{0}', '{1}')".format(
-                                finish_reason.replace("'", "''"), chunk_session_id
-                            )
-                        )
+                        _display_response("", finish_reason, chunk_session_id)
                         vim.command("redraw")
 
             # If no tool calls, check if this is a planning response
@@ -424,11 +423,7 @@ CRITICAL EXECUTION RULES:
                     # Safeguard against infinite loops
                     if plan_loop_count > 2:
                         error_msg = "\n\nL ERROR: Model keeps presenting plans without executing. Please try rephrasing your request or disable plan approval.\n"
-                        vim.command(
-                            "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                                error_msg.replace("'", "''"), chunk_session_id
-                            )
-                        )
+                        _display_response(error_msg, "", chunk_session_id)
                         break
 
                     # Verify this is actually a valid plan before asking for approval
@@ -463,11 +458,7 @@ CRITICAL EXECUTION RULES:
                     if not suppress_display:
                         approval_prompt_msg = "\n\n" + "=" * 70 + "\n"
                         approval_prompt_msg += "Plan presented above.\n"
-                        vim.command(
-                            "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                                approval_prompt_msg.replace("'", "''"), chunk_session_id
-                            )
-                        )
+                        _display_response(approval_prompt_msg, "", chunk_session_id)
                         vim.command("redraw!")
 
                         # Use inputlist() for better input handling
@@ -481,19 +472,11 @@ CRITICAL EXECUTION RULES:
                             approval_choice == 2 or approval_choice == 0
                         ):  # 2 = Cancel, 0 = ESC
                             cancel_msg = "\n\nL Plan cancelled by user.\n"
-                            vim.command(
-                                "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                                    cancel_msg.replace("'", "''"), chunk_session_id
-                                )
-                            )
+                            _display_response(cancel_msg, "", chunk_session_id)
                             break
                         elif approval_choice == 3:  # 3 = Request revisions
                             revise_msg = "\n\n= User requested plan revision.\n"
-                            vim.command(
-                                "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                                    revise_msg.replace("'", "''"), chunk_session_id
-                                )
-                            )
+                            _display_response(revise_msg, "", chunk_session_id)
                             revision_request = vim.eval(
                                 "input('What changes would you like? ')"
                             )
@@ -534,11 +517,7 @@ CRITICAL EXECUTION RULES:
                             approval_msg = (
                                 "\n\n Plan approved! Proceeding with execution...\n\n"
                             )
-                            vim.command(
-                                "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                                    approval_msg.replace("'", "''"), chunk_session_id
-                                )
-                            )
+                            _display_response(approval_msg, "", chunk_session_id)
 
                             # Send approval message to model to trigger execution - handle all provider formats
                             approval_instruction = "Plan approved. Execute step 1 now.\n\nCRITICAL INSTRUCTIONS:\n- Your response must contain ONLY the tool/function call for step 1\n- Do NOT write ANY text content in your response\n- Do NOT output headers like 'Tool Execution' or '======' or 'Step 1:'\n- The system will automatically display the tool execution progress\n- Just make the actual API function call and nothing else\n- After the tool completes, you'll see the results and can proceed to the next step"
@@ -569,28 +548,6 @@ CRITICAL EXECUTION RULES:
                         debug_log("INFO: Plan completed - plan file deleted")
 
                     break
-                    # If model said something about using tools but didn't call them, log a warning
-                    tool_mentions = [
-                        "create_file",
-                        "read_file",
-                        "edit_file",
-                        "git_",
-                        "list_directory",
-                        "find_",
-                    ]
-                    if any(
-                        mention in accumulated_content.lower()
-                        for mention in tool_mentions
-                    ):
-                        debug_log(
-                            f"WARNING: Model mentioned tools but didn't call them. Content: {accumulated_content[:500]}"
-                        )
-
-                    break
-
-            debug_log(
-                f"DEBUG: After no-tool-calls break check (should not see this if conversation ended)"
-            )
 
             # Check if model is presenting a revised plan during execution
             # Only check this if we're NOT in planning phase (to avoid double-asking)
@@ -617,11 +574,7 @@ CRITICAL EXECUTION RULES:
                     "= The agent has proposed a REVISED PLAN based on the results.\n"
                 )
                 revised_plan_header += "=" * 70 + "\n"
-                vim.command(
-                    "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                        revised_plan_header.replace("'", "''"), chunk_session_id
-                    )
-                )
+                _display_response(revised_plan_header, "", chunk_session_id)
 
                 # Ask for approval
                 vim.command("redraw!")
@@ -634,22 +587,14 @@ CRITICAL EXECUTION RULES:
 
                 if approval.lower() not in ["y", "yes"]:
                     cancel_msg = "\n\nL Revised plan cancelled by user.\n"
-                    vim.command(
-                        "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                            cancel_msg.replace("'", "''"), chunk_session_id
-                        )
-                    )
+                    _display_response(cancel_msg, "", chunk_session_id)
                     break
 
                 # Approved - continue execution
                 approval_msg = (
                     "\n\n Revised plan approved! Continuing execution...\n\n"
                 )
-                vim.command(
-                    "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                        approval_msg.replace("'", "''"), chunk_session_id
-                    )
-                )
+                _display_response(approval_msg, "", chunk_session_id)
 
             # Execute tools and add results to messages
             tool_iteration += 1
@@ -669,11 +614,7 @@ CRITICAL EXECUTION RULES:
                     + format_separator("=", 70)
                     + "\n"
                 )
-                vim.command(
-                    "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                        iteration_msg.replace("'", "''"), chunk_session_id
-                    )
-                )
+                _display_response(iteration_msg, "", chunk_session_id)
                 vim.command("redraw")
 
             # For Anthropic, we need to add the assistant message with ALL tool_use blocks first
@@ -740,11 +681,7 @@ CRITICAL EXECUTION RULES:
                     )
                     # Escape for VimScript by doubling single quotes
                     escaped_display = tool_display.replace("'", "''")
-                    vim.command(
-                        "call DisplayChatGPTResponse('{0}', '', '{1}')".format(
-                            escaped_display, chunk_session_id
-                        )
-                    )
+                    _display_response(escaped_display, "", chunk_session_id)
                     vim.command("redraw")
 
             # Add tool results to messages - format depends on provider

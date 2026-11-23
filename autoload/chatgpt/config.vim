@@ -42,8 +42,10 @@ function! chatgpt#config#setup() abort
     let g:split_ratio = 3
   endif
 
-  if !exists("g:chat_persona")
-    let g:chat_persona = 'default'
+  if !exists("g:llm_agent_persona") && !exists("g:chat_gpt_persona")
+    let g:llm_agent_persona = 'default'
+  elseif !exists("g:llm_agent_persona")
+    let g:llm_agent_persona = g:chat_gpt_persona
   endif
 
   " Enable tools/function calling (default: enabled for supported providers)
@@ -182,4 +184,7 @@ function! chatgpt#config#setup() abort
   elseif exists('g:chat_gpt_custom_persona')
     call extend(g:gpt_personas, g:chat_gpt_custom_persona)
   endif
+
+  " Set up Python path once at plugin load so all heredocs can import chatgpt.*
+  call chatgpt#ensure_python_path()
 endfunction

@@ -1,6 +1,18 @@
 " ChatGPT Autoload Core Functions
 " This file contains the main API functions for the ChatGPT plugin
 
+" Add the plugin's python3/ directory to Python's sys.path once per session.
+" Call this before any heredoc that imports from chatgpt.*
+function! chatgpt#ensure_python_path() abort
+  python3 << PYEOF
+import sys, os, vim
+_plugin_dir = vim.eval('expand("<sfile>:p:h:h")')
+_python_path = os.path.join(_plugin_dir, 'python3')
+if _python_path not in sys.path:
+    sys.path.insert(0, _python_path)
+PYEOF
+endfunction
+
 " Main ChatGPT function - delegates to Python
 function! chatgpt#chat(prompt) abort
   " Ensure suppress_display is off for normal chat operations
@@ -21,17 +33,7 @@ function! chatgpt#chat(prompt) abort
   let g:chatgpt_history_size_before = filereadable(history_file) ? getfsize(history_file) : 0
 
   python3 << EOF
-import sys
 import vim
-import os
-
-# Add python3/chatgpt to Python path
-plugin_dir = vim.eval('expand("<sfile>:p:h:h")')
-python_path = os.path.join(plugin_dir, 'python3')
-if python_path not in sys.path:
-    sys.path.insert(0, python_path)
-
-# Import and call main chat function
 from chatgpt.core import chat_gpt
 chat_gpt(vim.eval('a:prompt'))
 EOF
@@ -99,7 +101,7 @@ function! chatgpt#display_response(response, finish_reason, chat_gpt_session_id)
 
   call setbufline(chat_gpt_session_id, '$', clean_lines)
 
-  " Switch to chat window and scroll to bottom
+  " Switch to chat window and scroll to bottom, then restore the original window
   let chat_winnr = bufwinnr(chat_gpt_session_id)
   if chat_winnr != -1
     let current_win = winnr()
@@ -108,23 +110,15 @@ function! chatgpt#display_response(response, finish_reason, chat_gpt_session_id)
     call cursor('$', 1)
     execute "normal! \<C-E>\<C-Y>"
     redraw
+    execute current_win . 'wincmd w'
   endif
 
   " Save to history file if this is a persistent session
   if chat_gpt_session_id ==# 'gpt-persistent-session' && response != ''
     python3 << EOF
 import vim
-import sys
-import os
-
-plugin_dir = vim.eval('expand("<sfile>:p:h:h")')
-python_path = os.path.join(plugin_dir, 'python3')
-if python_path not in sys.path:
-    sys.path.insert(0, python_path)
-
 from chatgpt.utils import save_to_history
-response = vim.eval('a:response')
-save_to_history(response)
+save_to_history(vim.eval('a:response'))
 EOF
   endif
 endfunction
